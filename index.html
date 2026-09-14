@@ -160,11 +160,20 @@ function construirMarkdown(titulo, url, contenido) {
     `${contenido}`;
 }
 
-function copiar() {
+async function copiar() {
   const out = document.getElementById('output');
   if (!out.value) return;
-  out.select();
-  document.execCommand('copy');
+
+  try {
+    await navigator.clipboard.writeText(out.value);
+  } catch (e) {
+    // Fallback para navegadores viejos o contexto no-https
+    out.select();
+    document.execCommand('copy');
+    out.setSelectionRange(0, 0);
+    out.blur();
+  }
+
   const s = document.getElementById('status');
   const prev = s.textContent;
   s.textContent = '✓ Copiado al portapapeles';
