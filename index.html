@@ -5,40 +5,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Extractor de Notas → Markdown para IA</title>
 <style>
-  body { font-family: system-ui, -apple-system; background:#0f0f0f; color:#fff; padding:20px; max-width:800px; margin:auto; }
+  :root {
+    --bg: #0f0f0f;
+    --fg: #ffffff;
+    --panel: #1a1a1a;
+    --border: #333333;
+    --muted: #888888;
+    --accent-bg: #ffffff;
+    --accent-fg: #000000;
+    --ok: #7ee787;
+  }
+  body.light {
+    --bg: #f4f4f4;
+    --fg: #111111;
+    --panel: #ffffff;
+    --border: #dddddd;
+    --muted: #555555;
+    --accent-bg: #111111;
+    --accent-fg: #ffffff;
+    --ok: #1a7f37;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system; background:var(--bg); color:var(--fg); padding:20px; max-width:800px; margin:auto; transition: background .2s, color .2s; }
   h2 { margin:0; }
-  h3 { margin:28px 0 8px; font-size:16px; color:#ddd; }
-  p.sub { color:#888; margin-top:6px; font-size:14px; }
-  textarea#urlsInput { width:100%; height:90px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:15px; box-sizing:border-box; font-family: inherit; }
-  button { width:100%; padding:14px; border-radius:12px; border:none; background:#fff; color:#000; font-weight:700; font-size:16px; cursor:pointer; }
+  h3 { margin:28px 0 8px; font-size:16px; color:var(--fg); }
+  p.sub { color:var(--muted); margin-top:6px; font-size:14px; }
+  .topbar { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .themeBtn { width:auto; padding:8px 12px; font-size:14px; background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:10px; cursor:pointer; }
+  textarea#urlsInput { width:100%; height:90px; padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--fg); font-size:15px; box-sizing:border-box; font-family: inherit; }
+  .filtros { margin-top:12px; font-size:13px; color:var(--muted); }
+  .filtros label { display:inline-flex; align-items:center; gap:6px; margin-right:16px; margin-top:6px; color:var(--fg); }
+  select { width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--fg); font-size:14px; margin-top:10px; }
+  button { width:100%; padding:14px; border-radius:12px; border:none; background:var(--accent-bg); color:var(--accent-fg); font-weight:700; font-size:16px; cursor:pointer; }
   button:disabled { opacity:0.5; }
-  .secondary { background:#222 !important; color:#fff !important; border:1px solid #333 !important; }
-  .row { display:flex; gap:8px; }
-  .row button { margin-top:10px; }
-  #btn { margin-top:10px; }
-  textarea#output { width:100%; height:380px; margin-top:16px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:13px; line-height:1.6; box-sizing:border-box; font-family: ui-monospace, monospace; }
-  .info { margin-top:10px; font-size:13px; color:#888; }
-  .status { margin-top:10px; font-size:13px; color:#7ee787; min-height:18px; }
-  .tag { display:inline-block; background:#222; border:1px solid #333; padding:4px 8px; border-radius:20px; font-size:12px; margin-right:6px; margin-top:6px; }
-  .histItem { border:1px solid #333; border-radius:12px; padding:12px; margin-top:10px; }
+  .secondary { background:var(--panel) !important; color:var(--fg) !important; border:1px solid var(--border) !important; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row button { margin-top:10px; flex:1 1 auto; }
+  #btn { margin-top:14px; }
+  textarea#output { width:100%; height:360px; margin-top:16px; padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--fg); font-size:13px; line-height:1.6; box-sizing:border-box; font-family: ui-monospace, monospace; }
+  .info { margin-top:10px; font-size:13px; color:var(--muted); }
+  .status { margin-top:10px; font-size:13px; color:var(--ok); min-height:18px; display:flex; align-items:center; gap:8px; }
+  .tag { display:inline-block; background:var(--panel); border:1px solid var(--border); padding:4px 8px; border-radius:20px; font-size:12px; margin-right:6px; margin-top:6px; }
+  .spinner { width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--fg); border-radius:50%; animation: spin 0.8s linear infinite; flex-shrink:0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input#historialSearch { width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--fg); font-size:14px; margin-top:10px; }
+  .histItem { border:1px solid var(--border); border-radius:12px; padding:12px; margin-top:10px; }
   .histTitulo { font-weight:700; font-size:14px; }
-  .histMeta { color:#888; font-size:12px; margin-top:4px; }
-  .histBtns { display:flex; gap:8px; margin-top:8px; }
-  .histBtns button { padding:8px; font-size:13px; margin-top:0; }
-  .vacio { color:#666; font-size:13px; margin-top:10px; }
+  .histMeta { color:var(--muted); font-size:12px; margin-top:4px; }
+  .histBtns { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .histBtns button { padding:8px; font-size:12px; margin-top:0; flex:1 1 45%; }
+  .vacio { color:var(--muted); font-size:13px; margin-top:10px; }
 </style>
 </head>
 <body>
 
-<h2>Extractor de Notas → MD 🟢</h2>
-<p class="sub">Una URL por línea. Salida en Markdown limpio, listo para pegar en cualquier IA.</p>
+<div class="topbar">
+  <div>
+    <h2>Extractor de Notas → MD 🟢</h2>
+    <p class="sub">Una URL por línea. Salida en Markdown limpio, listo para pegar en cualquier IA.</p>
+  </div>
+  <button class="themeBtn" id="themeBtn" onclick="toggleTema()">🌙</button>
+</div>
 
 <textarea id="urlsInput" placeholder="https://www.debate.com.mx/...&#10;https://www.noroeste.com.mx/...&#10;(una por línea)"></textarea>
+
+<div class="filtros">
+  Filtros de extracción (aplican sobre todo al método lector directo / jina):
+  <div>
+    <label><input type="checkbox" id="incluirImagenes"> Incluir imágenes</label>
+    <label><input type="checkbox" id="incluirEnlaces"> Incluir enlaces (si no, solo texto)</label>
+    <label><input type="checkbox" id="incluirTablas"> Incluir tablas</label>
+  </div>
+</div>
 
 <button id="btn" onclick="extraer()">EXTRAER → MARKDOWN</button>
 
 <div id="status" class="status"></div>
 <div id="tags" class="info"></div>
+
+<select id="promptTemplate" onchange="aplicarPlantilla()">
+  <option value="ninguno">Sin plantilla (solo Markdown)</option>
+  <option value="resumir">Envolver: Resumir el texto</option>
+  <option value="puntos">Envolver: Extraer puntos clave</option>
+  <option value="verificar">Envolver: Señalar qué verificar con otras fuentes</option>
+</select>
 
 <textarea id="output" placeholder="Aquí saldrá el Markdown limpio..."></textarea>
 
@@ -53,16 +103,39 @@
 <div class="info">Prioriza r.jina.ai (lector nativo); si falla, cae a allorigins y luego codetabs. Cada nota extraída se guarda sola en tu historial local (solo en este navegador, nadie más lo ve).</div>
 
 <h3>Historial (local, este navegador)</h3>
+<input id="historialSearch" placeholder="Buscar por título o dominio..." oninput="renderHistorial()">
 <div class="row">
   <button class="secondary" onclick="exportarHistorialCompleto()">EXPORTAR TODO (.md)</button>
+  <button class="secondary" onclick="exportarHistorialJSON()">EXPORTAR JSON (backup)</button>
+</div>
+<div class="row">
+  <button class="secondary" onclick="document.getElementById('importFile').click()">IMPORTAR JSON</button>
   <button class="secondary" onclick="borrarHistorialCompleto()">BORRAR HISTORIAL</button>
 </div>
+<input type="file" id="importFile" accept="application/json" style="display:none" onchange="importarHistorialJSON(event)">
 <div id="historialList"></div>
 
 <script>
 const HISTORY_KEY = 'extractorNotasHistorial';
+const THEME_KEY = 'extractorNotasTema';
 let ultimoTitulo = '';
+let ultimoMD = '';
 
+// ---------- Tema ----------
+function aplicarTemaGuardado() {
+  const t = localStorage.getItem(THEME_KEY);
+  if (t === 'light') {
+    document.body.classList.add('light');
+    document.getElementById('themeBtn').textContent = '☀️';
+  }
+}
+function toggleTema() {
+  const esClaro = document.body.classList.toggle('light');
+  document.getElementById('themeBtn').textContent = esClaro ? '☀️' : '🌙';
+  localStorage.setItem(THEME_KEY, esClaro ? 'light' : 'dark');
+}
+
+// ---------- Historial ----------
 function cargarHistorial() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
   catch(e) { return []; }
@@ -71,7 +144,14 @@ function guardarHistorial(arr) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
 }
 function renderHistorial() {
-  const arr = cargarHistorial();
+  const filtro = (document.getElementById('historialSearch').value || '').toLowerCase().trim();
+  let arr = cargarHistorial();
+  if (filtro) {
+    arr = arr.filter(item => {
+      const dominio = (item.url || '').toLowerCase();
+      return (item.titulo || '').toLowerCase().includes(filtro) || dominio.includes(filtro);
+    });
+  }
   const cont = document.getElementById('historialList');
   if (arr.length === 0) {
     cont.innerHTML = '<div class="vacio">Sin notas guardadas todavía.</div>';
@@ -83,6 +163,8 @@ function renderHistorial() {
       <div class="histMeta">${escapeHtml(item.fecha)}${item.fechaPublicacion ? ' · Publicado: ' + escapeHtml(item.fechaPublicacion) : ''}</div>
       <div class="histBtns">
         <button class="secondary" onclick="verNota('${item.id}')">VER</button>
+        <button class="secondary" onclick="copiarNota('${item.id}', this)">COPIAR</button>
+        <button class="secondary" onclick="descargarNota('${item.id}')">DESCARGAR</button>
         <button class="secondary" onclick="eliminarDelHistorial('${item.id}')">ELIMINAR</button>
       </div>
     </div>
@@ -105,9 +187,29 @@ function eliminarDelHistorial(id) {
 function verNota(id) {
   const item = cargarHistorial().find(i => i.id === id);
   if (!item) return;
-  document.getElementById('output').value = item.md;
+  ultimoMD = item.md;
   ultimoTitulo = item.titulo;
+  aplicarPlantilla();
   window.scrollTo({top:0, behavior:'smooth'});
+}
+function copiarNota(id, btn) {
+  const item = cargarHistorial().find(i => i.id === id);
+  if (!item) return;
+  navigator.clipboard.writeText(item.md).catch(()=>{});
+  const prev = btn.textContent;
+  btn.textContent = '✓ Copiado';
+  setTimeout(()=> btn.textContent = prev, 1200);
+}
+function descargarNota(id) {
+  const item = cargarHistorial().find(i => i.id === id);
+  if (!item) return;
+  const slug = slugify(item.titulo);
+  const blob = new Blob([item.md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${slug}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 function exportarHistorialCompleto() {
   const arr = cargarHistorial();
@@ -120,16 +222,52 @@ function exportarHistorialCompleto() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+function exportarHistorialJSON() {
+  const arr = cargarHistorial();
+  if (arr.length === 0) return alert('No hay notas guardadas.');
+  const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `backup-historial-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importarHistorialJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let nuevos;
+    try { nuevos = JSON.parse(e.target.result); }
+    catch(err) { alert('Archivo JSON inválido.'); return; }
+    if (!Array.isArray(nuevos)) { alert('El archivo no tiene el formato esperado.'); return; }
+    const actual = cargarHistorial();
+    const idsActuales = new Set(actual.map(i => i.id));
+    const combinados = actual.concat(nuevos.filter(n => n && n.id && !idsActuales.has(n.id)));
+    guardarHistorial(combinados);
+    renderHistorial();
+    alert(`Importado. Notas agregadas: ${combinados.length - actual.length}`);
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
 function borrarHistorialCompleto() {
-  if (!confirm('¿Borrar todo el historial local? No se puede deshacer.')) return;
+  if (!confirm('¿Borrar todo el historial local? No se puede deshacer. Considera exportar el JSON antes.')) return;
   localStorage.removeItem(HISTORY_KEY);
   renderHistorial();
 }
 
+// ---------- Extracción ----------
 async function extraer() {
   const raw = document.getElementById('urlsInput').value.trim();
   if (!raw) return alert('Pega al menos una URL');
   const urls = raw.split('\n').map(u => u.trim()).filter(Boolean).map(u => u.startsWith('http') ? u : 'https://' + u);
+
+  const opts = {
+    imagenes: document.getElementById('incluirImagenes').checked,
+    enlaces: document.getElementById('incluirEnlaces').checked,
+    tablas: document.getElementById('incluirTablas').checked
+  };
 
   const btn = document.getElementById('btn');
   const out = document.getElementById('output');
@@ -144,16 +282,16 @@ async function extraer() {
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
-    statusDiv.textContent = `(${i+1}/${urls.length}) Probando lector directo...`;
+    setStatus(statusDiv, `(${i+1}/${urls.length}) Probando lector directo (jina)...`, true);
     btn.textContent = `Extrayendo ${i+1}/${urls.length}...`;
 
     let resultado = await intentarJina(url);
     if (!resultado) {
-      statusDiv.textContent = `(${i+1}/${urls.length}) Probando allorigins...`;
+      setStatus(statusDiv, `(${i+1}/${urls.length}) jina falló. Probando allorigins...`, true);
       resultado = await intentarProxyDOM(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, true);
     }
     if (!resultado) {
-      statusDiv.textContent = `(${i+1}/${urls.length}) Probando codetabs...`;
+      setStatus(statusDiv, `(${i+1}/${urls.length}) allorigins falló. Probando codetabs...`, true);
       resultado = await intentarProxyDOM(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, false);
     }
 
@@ -162,12 +300,13 @@ async function extraer() {
       continue;
     }
 
+    const contenidoFiltrado = filtrarContenido(resultado.contenido, opts);
     ultimoTitulo = resultado.titulo;
-    const md = construirMarkdown(resultado.titulo, url, resultado.contenido, resultado.fechaPublicacion, resultado.autor);
+    const md = construirMarkdown(resultado.titulo, url, contenidoFiltrado, resultado.fechaPublicacion, resultado.autor);
     bloques.push(md);
 
     const keywords = ["bache","socavón","cierre","obra","jumapam","inundación","choque","tráfico","pavimento","vialidad"]
-      .filter(k => resultado.contenido.toLowerCase().includes(k));
+      .filter(k => contenidoFiltrado.toLowerCase().includes(k));
     keywords.forEach(k => todosKeywords.add(k));
 
     agregarAlHistorial({
@@ -182,12 +321,17 @@ async function extraer() {
 
   btn.disabled = false;
   btn.textContent = 'EXTRAER → MARKDOWN';
-  statusDiv.textContent = `✓ Listo: ${bloques.length} nota(s) procesada(s)`;
+  setStatus(statusDiv, `✓ Listo: ${bloques.length} nota(s) procesada(s)`, false);
   tagsDiv.innerHTML = todosKeywords.size
     ? `Detectado: ${[...todosKeywords].map(k=>`<span class="tag">${k}</span>`).join('')}`
     : 'No se detectaron keywords de baches/obras';
 
-  out.value = bloques.join('\n\n===\n\n');
+  ultimoMD = bloques.join('\n\n===\n\n');
+  aplicarPlantilla();
+}
+
+function setStatus(el, texto, cargando) {
+  el.innerHTML = (cargando ? '<span class="spinner"></span>' : '') + `<span>${escapeHtml(texto)}</span>`;
 }
 
 async function intentarJina(url) {
@@ -250,12 +394,67 @@ function limpiarContenido(texto) {
   return texto.split('\n').map(l => l.trim()).filter(l => l.length > 0).join('\n\n');
 }
 
+// ---------- Filtros post-extracción ----------
+function filtrarContenido(md, opts) {
+  let out = md;
+  if (!opts.imagenes) {
+    out = out.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+  }
+  if (!opts.enlaces) {
+    out = out.replace(/(?<!!)\[([^\]]*)\]\([^)]*\)/g, '$1');
+  }
+  if (!opts.tablas) {
+    out = excluirTablas(out);
+  }
+  out = out.replace(/\n{3,}/g, '\n\n').trim();
+  return out;
+}
+function excluirTablas(md) {
+  const lineas = md.split('\n');
+  const resultado = [];
+  let i = 0;
+  const esSeparadorTabla = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(l);
+  while (i < lineas.length) {
+    if (esSeparadorTabla(lineas[i]) && resultado.length > 0 && resultado[resultado.length-1].includes('|')) {
+      resultado.pop();
+      i++;
+      while (i < lineas.length && lineas[i].includes('|')) i++;
+      continue;
+    }
+    resultado.push(lineas[i]);
+    i++;
+  }
+  return resultado.join('\n');
+}
+
 function construirMarkdown(titulo, url, contenido, fechaPublicacion, autor) {
   const fecha = new Date().toLocaleString('es-MX');
   let meta = `**Fuente:** ${url}\n**Extraído:** ${fecha}\n`;
   if (fechaPublicacion) meta += `**Fecha de publicación:** ${fechaPublicacion}\n`;
   if (autor) meta += `**Autor:** ${autor}\n`;
   return `# ${titulo}\n\n${meta}\n---\n\n${contenido}`;
+}
+
+// ---------- Plantillas de prompt ----------
+function aplicarPlantilla() {
+  const out = document.getElementById('output');
+  if (!ultimoMD) { out.value = ''; return; }
+  const sel = document.getElementById('promptTemplate').value;
+  const templates = {
+    ninguno: '',
+    resumir: 'Resume el siguiente texto en un párrafo corto, en español:\n\n',
+    puntos: 'Extrae los puntos clave del siguiente texto en una lista con viñetas:\n\n',
+    verificar: 'Analiza el siguiente texto y señala qué puntos convendría verificar cruzando con otras fuentes, sin inventar información adicional:\n\n'
+  };
+  out.value = (templates[sel] || '') + ultimoMD;
+}
+
+// ---------- Utilidades ----------
+function slugify(s) {
+  return (s||'nota').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    .slice(0, 60) || 'nota';
 }
 
 function copiar() {
@@ -268,22 +467,18 @@ function copiar() {
     out.blur();
   });
   const s = document.getElementById('status');
-  const prev = s.textContent;
-  s.textContent = '✓ Copiado al portapapeles';
-  setTimeout(()=> s.textContent = prev, 1500);
+  const prev = s.innerHTML;
+  s.innerHTML = '<span>✓ Copiado al portapapeles</span>';
+  setTimeout(()=> s.innerHTML = prev, 1500);
 }
 
 function descargar() {
   const out = document.getElementById('output');
   if (!out.value) return alert('Primero extrae una nota');
-  const slug = (ultimoTitulo || 'nota').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-    .slice(0, 60) || 'nota';
   const blob = new Blob([out.value], { type: 'text/markdown;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${slug}.md`;
+  a.download = `${slugify(ultimoTitulo)}.md`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -294,6 +489,7 @@ function verificarGoogle() {
   window.open(`https://www.google.com/search?q=${q}`, '_blank');
 }
 
+aplicarTemaGuardado();
 renderHistorial();
 </script>
 </body>
