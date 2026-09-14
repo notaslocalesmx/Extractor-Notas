@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extractor de Notas → Markdown para IA</title>
+<style>
+  body { font-family: system-ui, -apple-system; background:#0f0f0f; color:#fff; padding:20px; max-width:800px; margin:auto; }
+  h2 { margin:0; }
+  p.sub { color:#888; margin-top:6px; font-size:14px; }
+  input { width:100%; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:16px; box-sizing:border-box; }
+  button { width:100%; margin-top:10px; padding:14px; border-radius:12px; border:none; background:#fff; color:#000; font-weight:700; font-size:16px; cursor:pointer; }
+  button:disabled { opacity:0.5; }
+  .secondary { background:#222 !important; color:#fff !important; border:1px solid #333 !important; }
+  .row { display:flex; gap:8px; }
+  .row button { margin-top:10px; }
+  textarea { width:100%; height:420px; margin-top:16px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:13px; line-height:1.6; box-sizing:border-box; font-family: ui-monospace, monospace; }
+  .info { margin-top:10px; font-size:13px; color:#888; }
+  .status { margin-top:10px; font-size:13px; color:#7ee787; min-height:18px; }
+  .tag { display:inline-block; background:#222; border:1px solid #333; padding:4px 8px; border-radius:20px; font-size:12px; margin-right:6px; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<h2>Extractor de Notas → MD 🟢</h2>
+<p class="sub">Pega el link de la nota. Salida en Markdown limpio, listo para pegar en cualquier IA con el mínimo de tokens.</p>
+
+<input id="urlInput" type="url" placeholder="https://www.debate.com.mx/sinaloa/losmochis/...">
+
+<button id="btn" onclick="extraer()">EXTRAER → MARKDOWN</button>
+
+<div id="status" class="status"></div>
+<div id="tags" class="info"></div>
+
+<textarea id="output" placeholder="Aquí saldrá el Markdown limpio..."></textarea>
+
+<div class="row">
+  <button class="secondary" onclick="copiar()">COPIAR</button>
+  <button class="secondary" onclick="descargar()">DESCARGAR .MD</button>
+</div>
+
+<div class="info">Funciona offline salvo por las llamadas a los proxies. Prioriza r.jina.ai (lector nativo, ya da texto limpio); si falla, cae a allorigins y luego codetabs con parseo manual.</div>
+
+<script>
+let ultimoTitulo = 'nota';
+
+async function extraer() {
+  const urlRaw = document.getElementById('urlInput').value.trim();
+  if(!urlRaw) return alert('Pega una URL');
+  const url = urlRaw.startsWith('http') ? urlRaw : 'https://' + urlRaw;
+
+  const btn = document.getElementById('btn');
+  const out = document.getElementById('output');
+  const tagsDiv = document.getElementById('tags');
+  const statusDiv = document.getElementById('status');
+
+  btn.disabled = true;
+  btn.textContent = 'Extrayendo...';
+  out.value = '';
+  tagsDiv.innerHTML = '';
+
+  let resultado = null;
+
+  // MÉTODO 1: r.jina.ai — lector nativo, ya devuelve texto limpio (mejor para IA)
+  statusDiv.textContent = 'Probando lector directo (jina)...';
+  resultado = await intentarJina(url);
+
+  // MÉTODO 2: allorigins + parseo DOM manual
+  if (!resultado) {
+    statusDiv.textContent = 'Lector directo falló. Probando allorigins...';
+    resultado = await intentarProxyDOM(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, true);
+  }
+
+  // MÉTODO 3: codetabs + parseo DOM manual
+  if (!resultado) {
+    statusDiv.textContent = 'allorigins falló. Probando codetabs...';
+    resultado = await intentarProxyDOM(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, false);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'EXTRAER → MARKDOWN';
+
+  if (!resultado) {
+    statusDiv.textContent = '';
+    out.value = 'ERROR: los 3 métodos fallaron. El sitio puede tener bloqueo reforzado o el link está mal. Prueba abriendo la nota directo y verifica que cargue.';
+    return;
+  }
+
+  statusDiv.textContent = '✓ Extracción exitosa';
+  ultimoTitulo = resultado.titulo;
+
+  const keywords = ["bache","socavón","cierre","obra","jumapam","inundación","choque","tráfico","pavimento","vialidad"]
+    .filter(k => resultado.contenido.toLowerCase().includes(k));
+
+  tagsDiv.innerHTML = keywords.length
+    ? `Detectado: ${keywords.map(k=>`<span class="tag">${k}</span>`).join('')}`
+    : 'No se detectaron keywords de baches/obras';
+
+  out.value = construirMarkdown(resultado.titulo, url, resultado.contenido);
+}
+
+async function intentarJina(url) {
+  try {
+    const r = await fetch('https://r.jina.ai/' + url);
+    if (!r.ok) return null;
+    const texto = await r.text();
+    if (!texto || texto.length < 300) return null;
+
+    // jina devuelve algo como: "Title: ...\nURL Source: ...\nMarkdown Content:\n<contenido>"
+    const tituloMatch = texto.match(/Title:\s*(.+)/i);
+    const idxContenido = texto.indexOf('Markdown Content:');
+    const contenido = idxContenido !== -1 ? texto.slice(idxContenido + 'Markdown Content:'.length).trim() : texto.trim();
+
+    return {
+      titulo: tituloMatch ? tituloMatch[1].trim() : 'Nota',
+      contenido: limpiarContenido(contenido)
+    };
+  } catch(e) { return null; }
+}
+
+async function intentarProxyDOM(proxyUrl, esAllorigins) {
+  try {
+    const r = await fetch(proxyUrl);
+    if (!r.ok) return null;
+    let html;
+    if (esAllorigins) {
+      const data = await r.json().catch(()=>null);
+      html = data && data.contents ? data.contents : null;
+    } else {
+      html = await r.text();
+    }
+    if (!html || html.length < 1000) return null;
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const titulo = doc.querySelector('h1')?.innerText?.trim() || 'Nota';
+    const parrafos = [...doc.querySelectorAll('article p, .article-body p, .content p, .story p, p')]
+      .map(p => p.innerText.trim())
+      .filter(t => t.length > 50);
+    const unicos = [...new Set(parrafos)];
+    if (unicos.length === 0) return null;
+
+    return { titulo, contenido: unicos.join('\n\n') };
+  } catch(e) { return null; }
+}
+
+function limpiarContenido(texto) {
+  return texto
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .join('\n\n');
+}
+
+function construirMarkdown(titulo, url, contenido) {
+  const fecha = new Date().toLocaleString('es-MX');
+  return `# ${titulo}\n\n` +
+    `**Fuente:** ${url}\n` +
+    `**Extraído:** ${fecha}\n\n` +
+    `---\n\n` +
+    `${contenido}`;
+}
+
+function copiar() {
+  const out = document.getElementById('output');
+  if (!out.value) return;
+  out.select();
+  document.execCommand('copy');
+  const s = document.getElementById('status');
+  const prev = s.textContent;
+  s.textContent = '✓ Copiado al portapapeles';
+  setTimeout(()=> s.textContent = prev, 1500);
+}
+
+function descargar() {
+  const out = document.getElementById('output');
+  if (!out.value) return alert('Primero extrae una nota');
+  const slug = ultimoTitulo.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    .slice(0, 60) || 'nota';
+  const blob = new Blob([out.value], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${slug}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+</body>
+</html>
