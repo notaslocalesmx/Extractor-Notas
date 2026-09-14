@@ -7,25 +7,33 @@
 <style>
   body { font-family: system-ui, -apple-system; background:#0f0f0f; color:#fff; padding:20px; max-width:800px; margin:auto; }
   h2 { margin:0; }
+  h3 { margin:28px 0 8px; font-size:16px; color:#ddd; }
   p.sub { color:#888; margin-top:6px; font-size:14px; }
-  input { width:100%; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:16px; box-sizing:border-box; }
-  button { width:100%; margin-top:10px; padding:14px; border-radius:12px; border:none; background:#fff; color:#000; font-weight:700; font-size:16px; cursor:pointer; }
+  textarea#urlsInput { width:100%; height:90px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:15px; box-sizing:border-box; font-family: inherit; }
+  button { width:100%; padding:14px; border-radius:12px; border:none; background:#fff; color:#000; font-weight:700; font-size:16px; cursor:pointer; }
   button:disabled { opacity:0.5; }
   .secondary { background:#222 !important; color:#fff !important; border:1px solid #333 !important; }
   .row { display:flex; gap:8px; }
   .row button { margin-top:10px; }
-  textarea { width:100%; height:420px; margin-top:16px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:13px; line-height:1.6; box-sizing:border-box; font-family: ui-monospace, monospace; }
+  #btn { margin-top:10px; }
+  textarea#output { width:100%; height:380px; margin-top:16px; padding:14px; border-radius:12px; border:1px solid #333; background:#1a1a1a; color:#fff; font-size:13px; line-height:1.6; box-sizing:border-box; font-family: ui-monospace, monospace; }
   .info { margin-top:10px; font-size:13px; color:#888; }
   .status { margin-top:10px; font-size:13px; color:#7ee787; min-height:18px; }
   .tag { display:inline-block; background:#222; border:1px solid #333; padding:4px 8px; border-radius:20px; font-size:12px; margin-right:6px; margin-top:6px; }
+  .histItem { border:1px solid #333; border-radius:12px; padding:12px; margin-top:10px; }
+  .histTitulo { font-weight:700; font-size:14px; }
+  .histMeta { color:#888; font-size:12px; margin-top:4px; }
+  .histBtns { display:flex; gap:8px; margin-top:8px; }
+  .histBtns button { padding:8px; font-size:13px; margin-top:0; }
+  .vacio { color:#666; font-size:13px; margin-top:10px; }
 </style>
 </head>
 <body>
 
 <h2>Extractor de Notas → MD 🟢</h2>
-<p class="sub">Pega el link de la nota. Salida en Markdown limpio, listo para pegar en cualquier IA con el mínimo de tokens.</p>
+<p class="sub">Una URL por línea. Salida en Markdown limpio, listo para pegar en cualquier IA.</p>
 
-<input id="urlInput" type="url" placeholder="https://www.debate.com.mx/sinaloa/losmochis/...">
+<textarea id="urlsInput" placeholder="https://www.debate.com.mx/...&#10;https://www.noroeste.com.mx/...&#10;(una por línea)"></textarea>
 
 <button id="btn" onclick="extraer()">EXTRAER → MARKDOWN</button>
 
@@ -38,16 +46,90 @@
   <button class="secondary" onclick="copiar()">COPIAR</button>
   <button class="secondary" onclick="descargar()">DESCARGAR .MD</button>
 </div>
+<div class="row">
+  <button class="secondary" onclick="verificarGoogle()">VERIFICAR EN GOOGLE (última nota)</button>
+</div>
 
-<div class="info">Funciona offline salvo por las llamadas a los proxies. Prioriza r.jina.ai (lector nativo, ya da texto limpio); si falla, cae a allorigins y luego codetabs con parseo manual.</div>
+<div class="info">Prioriza r.jina.ai (lector nativo); si falla, cae a allorigins y luego codetabs. Cada nota extraída se guarda sola en tu historial local (solo en este navegador, nadie más lo ve).</div>
+
+<h3>Historial (local, este navegador)</h3>
+<div class="row">
+  <button class="secondary" onclick="exportarHistorialCompleto()">EXPORTAR TODO (.md)</button>
+  <button class="secondary" onclick="borrarHistorialCompleto()">BORRAR HISTORIAL</button>
+</div>
+<div id="historialList"></div>
 
 <script>
-let ultimoTitulo = 'nota';
+const HISTORY_KEY = 'extractorNotasHistorial';
+let ultimoTitulo = '';
+
+function cargarHistorial() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch(e) { return []; }
+}
+function guardarHistorial(arr) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+}
+function renderHistorial() {
+  const arr = cargarHistorial();
+  const cont = document.getElementById('historialList');
+  if (arr.length === 0) {
+    cont.innerHTML = '<div class="vacio">Sin notas guardadas todavía.</div>';
+    return;
+  }
+  cont.innerHTML = arr.slice().reverse().map(item => `
+    <div class="histItem">
+      <div class="histTitulo">${escapeHtml(item.titulo)}</div>
+      <div class="histMeta">${escapeHtml(item.fecha)}${item.fechaPublicacion ? ' · Publicado: ' + escapeHtml(item.fechaPublicacion) : ''}</div>
+      <div class="histBtns">
+        <button class="secondary" onclick="verNota('${item.id}')">VER</button>
+        <button class="secondary" onclick="eliminarDelHistorial('${item.id}')">ELIMINAR</button>
+      </div>
+    </div>
+  `).join('');
+}
+function escapeHtml(s) {
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function agregarAlHistorial(item) {
+  const arr = cargarHistorial();
+  arr.push(item);
+  guardarHistorial(arr);
+  renderHistorial();
+}
+function eliminarDelHistorial(id) {
+  const arr = cargarHistorial().filter(i => i.id !== id);
+  guardarHistorial(arr);
+  renderHistorial();
+}
+function verNota(id) {
+  const item = cargarHistorial().find(i => i.id === id);
+  if (!item) return;
+  document.getElementById('output').value = item.md;
+  ultimoTitulo = item.titulo;
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function exportarHistorialCompleto() {
+  const arr = cargarHistorial();
+  if (arr.length === 0) return alert('No hay notas guardadas.');
+  const todo = arr.map(i => i.md).join('\n\n===\n\n');
+  const blob = new Blob([todo], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `historial-notas-${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function borrarHistorialCompleto() {
+  if (!confirm('¿Borrar todo el historial local? No se puede deshacer.')) return;
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistorial();
+}
 
 async function extraer() {
-  const urlRaw = document.getElementById('urlInput').value.trim();
-  if(!urlRaw) return alert('Pega una URL');
-  const url = urlRaw.startsWith('http') ? urlRaw : 'https://' + urlRaw;
+  const raw = document.getElementById('urlsInput').value.trim();
+  if (!raw) return alert('Pega al menos una URL');
+  const urls = raw.split('\n').map(u => u.trim()).filter(Boolean).map(u => u.startsWith('http') ? u : 'https://' + u);
 
   const btn = document.getElementById('btn');
   const out = document.getElementById('output');
@@ -55,48 +137,57 @@ async function extraer() {
   const statusDiv = document.getElementById('status');
 
   btn.disabled = true;
-  btn.textContent = 'Extrayendo...';
   out.value = '';
   tagsDiv.innerHTML = '';
+  const bloques = [];
+  const todosKeywords = new Set();
 
-  let resultado = null;
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    statusDiv.textContent = `(${i+1}/${urls.length}) Probando lector directo...`;
+    btn.textContent = `Extrayendo ${i+1}/${urls.length}...`;
 
-  // MÉTODO 1: r.jina.ai — lector nativo, ya devuelve texto limpio (mejor para IA)
-  statusDiv.textContent = 'Probando lector directo (jina)...';
-  resultado = await intentarJina(url);
+    let resultado = await intentarJina(url);
+    if (!resultado) {
+      statusDiv.textContent = `(${i+1}/${urls.length}) Probando allorigins...`;
+      resultado = await intentarProxyDOM(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, true);
+    }
+    if (!resultado) {
+      statusDiv.textContent = `(${i+1}/${urls.length}) Probando codetabs...`;
+      resultado = await intentarProxyDOM(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, false);
+    }
 
-  // MÉTODO 2: allorigins + parseo DOM manual
-  if (!resultado) {
-    statusDiv.textContent = 'Lector directo falló. Probando allorigins...';
-    resultado = await intentarProxyDOM(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, true);
-  }
+    if (!resultado) {
+      bloques.push(`# ERROR\n\n**URL:** ${url}\n\nLos 3 métodos fallaron para esta nota.`);
+      continue;
+    }
 
-  // MÉTODO 3: codetabs + parseo DOM manual
-  if (!resultado) {
-    statusDiv.textContent = 'allorigins falló. Probando codetabs...';
-    resultado = await intentarProxyDOM(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, false);
+    ultimoTitulo = resultado.titulo;
+    const md = construirMarkdown(resultado.titulo, url, resultado.contenido, resultado.fechaPublicacion, resultado.autor);
+    bloques.push(md);
+
+    const keywords = ["bache","socavón","cierre","obra","jumapam","inundación","choque","tráfico","pavimento","vialidad"]
+      .filter(k => resultado.contenido.toLowerCase().includes(k));
+    keywords.forEach(k => todosKeywords.add(k));
+
+    agregarAlHistorial({
+      id: Date.now() + '-' + i,
+      titulo: resultado.titulo,
+      url,
+      fecha: new Date().toLocaleString('es-MX'),
+      fechaPublicacion: resultado.fechaPublicacion || '',
+      md
+    });
   }
 
   btn.disabled = false;
   btn.textContent = 'EXTRAER → MARKDOWN';
-
-  if (!resultado) {
-    statusDiv.textContent = '';
-    out.value = 'ERROR: los 3 métodos fallaron. El sitio puede tener bloqueo reforzado o el link está mal. Prueba abriendo la nota directo y verifica que cargue.';
-    return;
-  }
-
-  statusDiv.textContent = '✓ Extracción exitosa';
-  ultimoTitulo = resultado.titulo;
-
-  const keywords = ["bache","socavón","cierre","obra","jumapam","inundación","choque","tráfico","pavimento","vialidad"]
-    .filter(k => resultado.contenido.toLowerCase().includes(k));
-
-  tagsDiv.innerHTML = keywords.length
-    ? `Detectado: ${keywords.map(k=>`<span class="tag">${k}</span>`).join('')}`
+  statusDiv.textContent = `✓ Listo: ${bloques.length} nota(s) procesada(s)`;
+  tagsDiv.innerHTML = todosKeywords.size
+    ? `Detectado: ${[...todosKeywords].map(k=>`<span class="tag">${k}</span>`).join('')}`
     : 'No se detectaron keywords de baches/obras';
 
-  out.value = construirMarkdown(resultado.titulo, url, resultado.contenido);
+  out.value = bloques.join('\n\n===\n\n');
 }
 
 async function intentarJina(url) {
@@ -106,13 +197,15 @@ async function intentarJina(url) {
     const texto = await r.text();
     if (!texto || texto.length < 300) return null;
 
-    // jina devuelve algo como: "Title: ...\nURL Source: ...\nMarkdown Content:\n<contenido>"
     const tituloMatch = texto.match(/Title:\s*(.+)/i);
+    const pubMatch = texto.match(/Published Time:\s*(.+)/i);
     const idxContenido = texto.indexOf('Markdown Content:');
     const contenido = idxContenido !== -1 ? texto.slice(idxContenido + 'Markdown Content:'.length).trim() : texto.trim();
 
     return {
       titulo: tituloMatch ? tituloMatch[1].trim() : 'Nota',
+      fechaPublicacion: pubMatch ? pubMatch[1].trim() : '',
+      autor: '',
       contenido: limpiarContenido(contenido)
     };
   } catch(e) { return null; }
@@ -132,48 +225,48 @@ async function intentarProxyDOM(proxyUrl, esAllorigins) {
     if (!html || html.length < 1000) return null;
 
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const titulo = doc.querySelector('h1')?.innerText?.trim() || 'Nota';
+    const titulo = doc.querySelector('h1')?.innerText?.trim()
+      || doc.querySelector('meta[property="og:title"]')?.content?.trim()
+      || 'Nota';
+    const fechaPublicacion = doc.querySelector('meta[property="article:published_time"]')?.content
+      || doc.querySelector('meta[name="pubdate"]')?.content
+      || doc.querySelector('time[datetime]')?.getAttribute('datetime')
+      || '';
+    const autor = doc.querySelector('meta[name="author"]')?.content
+      || doc.querySelector('meta[property="article:author"]')?.content
+      || '';
+
     const parrafos = [...doc.querySelectorAll('article p, .article-body p, .content p, .story p, p')]
       .map(p => p.innerText.trim())
       .filter(t => t.length > 50);
     const unicos = [...new Set(parrafos)];
     if (unicos.length === 0) return null;
 
-    return { titulo, contenido: unicos.join('\n\n') };
+    return { titulo, fechaPublicacion, autor, contenido: unicos.join('\n\n') };
   } catch(e) { return null; }
 }
 
 function limpiarContenido(texto) {
-  return texto
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 0)
-    .join('\n\n');
+  return texto.split('\n').map(l => l.trim()).filter(l => l.length > 0).join('\n\n');
 }
 
-function construirMarkdown(titulo, url, contenido) {
+function construirMarkdown(titulo, url, contenido, fechaPublicacion, autor) {
   const fecha = new Date().toLocaleString('es-MX');
-  return `# ${titulo}\n\n` +
-    `**Fuente:** ${url}\n` +
-    `**Extraído:** ${fecha}\n\n` +
-    `---\n\n` +
-    `${contenido}`;
+  let meta = `**Fuente:** ${url}\n**Extraído:** ${fecha}\n`;
+  if (fechaPublicacion) meta += `**Fecha de publicación:** ${fechaPublicacion}\n`;
+  if (autor) meta += `**Autor:** ${autor}\n`;
+  return `# ${titulo}\n\n${meta}\n---\n\n${contenido}`;
 }
 
-async function copiar() {
+function copiar() {
   const out = document.getElementById('output');
   if (!out.value) return;
-
-  try {
-    await navigator.clipboard.writeText(out.value);
-  } catch (e) {
-    // Fallback para navegadores viejos o contexto no-https
+  navigator.clipboard.writeText(out.value).catch(() => {
     out.select();
     document.execCommand('copy');
     out.setSelectionRange(0, 0);
     out.blur();
-  }
-
+  });
   const s = document.getElementById('status');
   const prev = s.textContent;
   s.textContent = '✓ Copiado al portapapeles';
@@ -183,7 +276,7 @@ async function copiar() {
 function descargar() {
   const out = document.getElementById('output');
   if (!out.value) return alert('Primero extrae una nota');
-  const slug = ultimoTitulo.toLowerCase()
+  const slug = (ultimoTitulo || 'nota').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
     .slice(0, 60) || 'nota';
@@ -194,6 +287,14 @@ function descargar() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+function verificarGoogle() {
+  if (!ultimoTitulo) return alert('Primero extrae una nota');
+  const q = encodeURIComponent(`"${ultimoTitulo}"`);
+  window.open(`https://www.google.com/search?q=${q}`, '_blank');
+}
+
+renderHistorial();
 </script>
 </body>
 </html>
