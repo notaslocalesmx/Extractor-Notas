@@ -36,6 +36,7 @@
   .filtros { margin-top:12px; font-size:13px; color:var(--muted); }
   .filtros label { display:inline-flex; align-items:center; gap:6px; margin-right:16px; margin-top:6px; color:var(--fg); }
   select { width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--fg); font-size:14px; margin-top:10px; }
+  label.selectLabel { display:block; font-size:12px; color:var(--muted); margin-top:14px; }
   button { width:100%; padding:14px; border-radius:12px; border:none; background:var(--accent-bg); color:var(--accent-fg); font-weight:700; font-size:16px; cursor:pointer; }
   button:disabled { opacity:0.5; }
   .secondary { background:var(--panel) !important; color:var(--fg) !important; border:1px solid var(--border) !important; }
@@ -83,11 +84,18 @@
 <div id="status" class="status"></div>
 <div id="tags" class="info"></div>
 
+<label class="selectLabel">Plantilla general</label>
 <select id="promptTemplate" onchange="aplicarPlantilla()">
   <option value="ninguno">Sin plantilla (solo Markdown)</option>
   <option value="resumir">Envolver: Resumir el texto</option>
   <option value="puntos">Envolver: Extraer puntos clave</option>
+  <option value="desglosar">Envolver: Desglosar y simplificar</option>
   <option value="verificar">Envolver: Señalar qué verificar con otras fuentes</option>
+</select>
+
+<label class="selectLabel" id="categoriaDetectada">Plantilla según tipo de nota</label>
+<select id="categoryTemplate" onchange="aplicarPlantillaCategoria()">
+  <option value="ninguno">Sin plantilla de categoría</option>
 </select>
 
 <textarea id="output" placeholder="Aquí saldrá el Markdown limpio..."></textarea>
@@ -100,7 +108,7 @@
   <button class="secondary" onclick="verificarGoogle()">VERIFICAR EN GOOGLE (última nota)</button>
 </div>
 
-<div class="info">Prioriza r.jina.ai (lector nativo); si falla, cae a allorigins y luego codetabs. Cada nota extraída se guarda sola en tu historial local (solo en este navegador, nadie más lo ve).</div>
+<div class="info">Prioriza r.jina.ai (lector nativo); si falla, cae a allorigins y luego codetabs. Cada nota extraída se guarda sola en tu historial local (solo en este navegador, nadie más lo ve). La categoría se detecta por palabras clave — es una heurística simple, no un análisis real de IA, así que puede equivocarse.</div>
 
 <h3>Historial (local, este navegador)</h3>
 <input id="historialSearch" placeholder="Buscar por título o dominio..." oninput="renderHistorial()">
@@ -120,6 +128,71 @@ const HISTORY_KEY = 'extractorNotasHistorial';
 const THEME_KEY = 'extractorNotasTema';
 let ultimoTitulo = '';
 let ultimoMD = '';
+let ultimaCategoria = 'general';
+
+// ---------- Clasificación por tipo de nota (heurística por palabras clave) ----------
+const CATEGORIAS_KEYWORDS = {
+  policia: ['homicidio','asesinato','detenido','detención','arresto','balacera','disparo','delito','delincuente','robo','asalto','narco','cártel','cartel','feminicidio','secuestro','cadáver','fiscalía','ministerio público','presunto','sicario','arma de fuego','crimen'],
+  politica: ['alcalde','ayuntamiento','cabildo','gobernador','funcionario','tesorero','regidor','presupuesto','síndico','sindicatura','elecciones','candidato','partido político','diputado','senador','gobierno','secretaría','licitación'],
+  espectaculos: ['actor','actriz','cantante','famoso','famosa','celebridad','concierto','película','serie de tv','telenovela','artista','red carpet','alfombra roja','premios'],
+  deportes: ['gol','partido de','equipo','liga mx','fútbol','futbol','béisbol','basquetbol','baloncesto','jugador','entrenador','torneo','campeonato','marcador','estadio'],
+  economia: ['empresa','inversión','tipo de cambio','peso mexicano','dólar','mercado','economía','negocio','empleo','industria','exportación','pyme'],
+  obra_publica: ['bache','socavón','pavimento','jumapam','vialidad','alumbrado público','drenaje','agua potable','obra pública','construcción de']
+};
+const CATEGORIA_LABELS = {
+  policia: 'Policía / Nota roja',
+  politica: 'Política / Gobierno',
+  espectaculos: 'Espectáculos',
+  deportes: 'Deportes',
+  economia: 'Economía / Negocios',
+  obra_publica: 'Obra pública / Infraestructura',
+  general: 'General'
+};
+const CATEGORY_TEMPLATES = {
+  policia: [
+    {value:'p1', label:'Resumir hechos (qué, quién, cuándo, dónde)', text:'Resume los hechos de la siguiente nota policiaca indicando qué pasó, quién está involucrado, cuándo y dónde, sin especular más allá de lo reportado:\n\n'},
+    {value:'p2', label:'Extraer estatus legal de cada persona', text:'Extrae el estatus legal de cada persona mencionada en el siguiente texto (detenido, prófugo, víctima, testigo), basándote solo en lo que dice:\n\n'}
+  ],
+  politica: [
+    {value:'g1', label:'Extraer funcionarios y cargos', text:'Extrae los funcionarios públicos mencionados en el siguiente texto junto con su cargo y cualquier dato relevante sobre su gestión:\n\n'},
+    {value:'g2', label:'Resumir decisión o postura política', text:'Resume la decisión, postura o anuncio político descrito en el siguiente texto, en un párrafo neutral:\n\n'}
+  ],
+  espectaculos: [
+    {value:'e1', label:'Resumen breve y ligero', text:'Resume la siguiente nota de espectáculos en dos o tres líneas, en tono ligero:\n\n'},
+    {value:'e2', label:'Extraer quién, qué evento y cuándo', text:'Extrae de la siguiente nota quién está involucrado, de qué evento se trata y cuándo ocurre:\n\n'}
+  ],
+  deportes: [
+    {value:'d1', label:'Resumen de resultado/marcador', text:'Resume el resultado deportivo del siguiente texto, incluyendo marcador y datos clave del partido o evento:\n\n'},
+    {value:'d2', label:'Extraer equipos y jugadores', text:'Extrae los equipos y jugadores mencionados en el siguiente texto junto con su desempeño reportado:\n\n'}
+  ],
+  economia: [
+    {value:'ec1', label:'Resumir impacto económico', text:'Resume el impacto económico descrito en el siguiente texto (cifras, sectores afectados, contexto):\n\n'}
+  ],
+  obra_publica: [
+    {value:'o1', label:'Extraer ubicación y estado de la obra', text:'Extrae la ubicación exacta, estado actual y fecha estimada de conclusión de la obra descrita en el siguiente texto:\n\n'}
+  ],
+  general: [
+    {value:'x1', label:'Resumen general neutral', text:'Resume el siguiente texto de forma neutral y objetiva:\n\n'}
+  ]
+};
+function clasificarNota(texto) {
+  const lower = texto.toLowerCase();
+  let mejor = { categoria: 'general', hits: 0 };
+  for (const [cat, palabras] of Object.entries(CATEGORIAS_KEYWORDS)) {
+    const hits = palabras.filter(p => lower.includes(p)).length;
+    if (hits > mejor.hits) mejor = { categoria: cat, hits };
+  }
+  return mejor.hits > 0 ? mejor.categoria : 'general';
+}
+function renderCategoryDropdown(categoria) {
+  const sel = document.getElementById('categoryTemplate');
+  const templates = CATEGORY_TEMPLATES[categoria] || CATEGORY_TEMPLATES.general;
+  sel.innerHTML = '<option value="ninguno">Sin plantilla de categoría</option>' +
+    templates.map(t => `<option value="${t.value}">${escapeHtml(t.label)}</option>`).join('');
+  sel.value = 'ninguno';
+  document.getElementById('categoriaDetectada').textContent =
+    `Plantilla según tipo de nota — detectada (última nota): ${CATEGORIA_LABELS[categoria] || 'General'}`;
+}
 
 // ---------- Tema ----------
 function aplicarTemaGuardado() {
@@ -160,7 +233,7 @@ function renderHistorial() {
   cont.innerHTML = arr.slice().reverse().map(item => `
     <div class="histItem">
       <div class="histTitulo">${escapeHtml(item.titulo)}</div>
-      <div class="histMeta">${escapeHtml(item.fecha)}${item.fechaPublicacion ? ' · Publicado: ' + escapeHtml(item.fechaPublicacion) : ''}</div>
+      <div class="histMeta">${escapeHtml(item.fecha)}${item.fechaPublicacion ? ' · Publicado: ' + escapeHtml(item.fechaPublicacion) : ''} · ${escapeHtml(CATEGORIA_LABELS[item.categoria] || 'General')}</div>
       <div class="histBtns">
         <button class="secondary" onclick="verNota('${item.id}')">VER</button>
         <button class="secondary" onclick="copiarNota('${item.id}', this)">COPIAR</button>
@@ -189,6 +262,9 @@ function verNota(id) {
   if (!item) return;
   ultimoMD = item.md;
   ultimoTitulo = item.titulo;
+  ultimaCategoria = item.categoria || 'general';
+  renderCategoryDropdown(ultimaCategoria);
+  document.getElementById('promptTemplate').value = 'ninguno';
   aplicarPlantilla();
   window.scrollTo({top:0, behavior:'smooth'});
 }
@@ -279,6 +355,7 @@ async function extraer() {
   tagsDiv.innerHTML = '';
   const bloques = [];
   const todosKeywords = new Set();
+  const categoriasPorNota = [];
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
@@ -301,9 +378,13 @@ async function extraer() {
     }
 
     const contenidoFiltrado = filtrarContenido(resultado.contenido, opts);
+    const categoria = clasificarNota(contenidoFiltrado);
     ultimoTitulo = resultado.titulo;
+    ultimaCategoria = categoria;
     const md = construirMarkdown(resultado.titulo, url, contenidoFiltrado, resultado.fechaPublicacion, resultado.autor);
     bloques.push(md);
+
+    categoriasPorNota.push(`Nota ${i+1}: ${CATEGORIA_LABELS[categoria]}`);
 
     const keywords = ["bache","socavón","cierre","obra","jumapam","inundación","choque","tráfico","pavimento","vialidad"]
       .filter(k => contenidoFiltrado.toLowerCase().includes(k));
@@ -315,6 +396,7 @@ async function extraer() {
       url,
       fecha: new Date().toLocaleString('es-MX'),
       fechaPublicacion: resultado.fechaPublicacion || '',
+      categoria,
       md
     });
   }
@@ -322,10 +404,15 @@ async function extraer() {
   btn.disabled = false;
   btn.textContent = 'EXTRAER → MARKDOWN';
   setStatus(statusDiv, `✓ Listo: ${bloques.length} nota(s) procesada(s)`, false);
-  tagsDiv.innerHTML = todosKeywords.size
+
+  const catsHtml = categoriasPorNota.map(c=>`<span class="tag">${escapeHtml(c)}</span>`).join('');
+  const kwHtml = todosKeywords.size
     ? `Detectado: ${[...todosKeywords].map(k=>`<span class="tag">${k}</span>`).join('')}`
     : 'No se detectaron keywords de baches/obras';
+  tagsDiv.innerHTML = catsHtml + '<br>' + kwHtml;
 
+  renderCategoryDropdown(ultimaCategoria);
+  document.getElementById('promptTemplate').value = 'ninguno';
   ultimoMD = bloques.join('\n\n===\n\n');
   aplicarPlantilla();
 }
@@ -438,15 +525,28 @@ function construirMarkdown(titulo, url, contenido, fechaPublicacion, autor) {
 // ---------- Plantillas de prompt ----------
 function aplicarPlantilla() {
   const out = document.getElementById('output');
+  const catSel = document.getElementById('categoryTemplate');
+  if (catSel) catSel.value = 'ninguno';
   if (!ultimoMD) { out.value = ''; return; }
   const sel = document.getElementById('promptTemplate').value;
   const templates = {
     ninguno: '',
     resumir: 'Resume el siguiente texto en un párrafo corto, en español:\n\n',
     puntos: 'Extrae los puntos clave del siguiente texto en una lista con viñetas:\n\n',
+    desglosar: 'Desglosa el siguiente texto en partes claras (qué pasó, quién, cuándo, dónde, por qué) y explica cada parte en lenguaje simple, como si se lo explicaras a alguien sin conocimiento previo del tema:\n\n',
     verificar: 'Analiza el siguiente texto y señala qué puntos convendría verificar cruzando con otras fuentes, sin inventar información adicional:\n\n'
   };
   out.value = (templates[sel] || '') + ultimoMD;
+}
+function aplicarPlantillaCategoria() {
+  const out = document.getElementById('output');
+  if (!ultimoMD) return;
+  document.getElementById('promptTemplate').value = 'ninguno';
+  const sel = document.getElementById('categoryTemplate').value;
+  if (sel === 'ninguno') { out.value = ultimoMD; return; }
+  const templates = CATEGORY_TEMPLATES[ultimaCategoria] || CATEGORY_TEMPLATES.general;
+  const t = templates.find(x => x.value === sel);
+  out.value = (t ? t.text : '') + ultimoMD;
 }
 
 // ---------- Utilidades ----------
@@ -490,6 +590,7 @@ function verificarGoogle() {
 }
 
 aplicarTemaGuardado();
+renderCategoryDropdown('general');
 renderHistorial();
 </script>
 </body>
