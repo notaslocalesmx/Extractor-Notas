@@ -76,6 +76,7 @@
     <label><input type="checkbox" id="incluirImagenes"> Incluir imágenes</label>
     <label><input type="checkbox" id="incluirEnlaces"> Incluir enlaces (si no, solo texto)</label>
     <label><input type="checkbox" id="incluirTablas"> Incluir tablas</label>
+    <label><input type="checkbox" id="limpiarSitio" checked> Quitar menús y notas ajenas del sitio</label>
   </div>
 </div>
 
@@ -123,6 +124,7 @@
 <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importarHistorialJSON(event)">
 <div id="historialList"></div>
 
+<script src="lib/limpieza.js"></script>
 <script>
 const HISTORY_KEY = 'extractorNotasHistorial';
 const THEME_KEY = 'extractorNotasTema';
@@ -337,7 +339,7 @@ function borrarHistorialCompleto() {
 async function extraer() {
   const raw = document.getElementById('urlsInput').value.trim();
   if (!raw) return alert('Pega al menos una URL');
-  const urls = raw.split('\n').map(u => u.trim()).filter(Boolean).map(u => u.startsWith('http') ? u : 'https://' + u);
+  const urls = raw.split('\n').map(u => u.trim()).filter(Boolean).map(u => u.startsWith('http') ? u : 'https://' + u).map(u => window.Limpieza ? Limpieza.limpiarUrl(u) : u);
 
   const opts = {
     imagenes: document.getElementById('incluirImagenes').checked,
@@ -377,11 +379,16 @@ async function extraer() {
       continue;
     }
 
-    const contenidoFiltrado = filtrarContenido(resultado.contenido, opts);
+    let cuerpo = resultado.contenido, autorFinal = resultado.autor;
+    if (document.getElementById('limpiarSitio').checked && window.Limpieza) {
+      const l = Limpieza.limpiarNota(cuerpo, url, resultado.titulo);
+      cuerpo = l.contenido; autorFinal = autorFinal || l.autor;
+    }
+    const contenidoFiltrado = filtrarContenido(cuerpo, opts);
     const categoria = clasificarNota(contenidoFiltrado);
     ultimoTitulo = resultado.titulo;
     ultimaCategoria = categoria;
-    const md = construirMarkdown(resultado.titulo, url, contenidoFiltrado, resultado.fechaPublicacion, resultado.autor);
+    const md = construirMarkdown(resultado.titulo, url, contenidoFiltrado, resultado.fechaPublicacion, autorFinal);
     bloques.push(md);
 
     categoriasPorNota.push(`Nota ${i+1}: ${CATEGORIA_LABELS[categoria]}`);
