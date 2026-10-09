@@ -484,12 +484,26 @@ function limpiarContenido(texto) {
 // ---------- Filtros post-extracción ----------
 function filtrarContenido(md, opts) {
   let out = md;
-  if (!opts.imagenes) {
+  const imagenesGuardadas = [];
+
+  if (opts.imagenes) {
+    // Las resguardamos con un marcador temporal para que el paso de enlaces no las toque
+    out = out.replace(/!\[[^\]]*\]\([^)]*\)/g, (m) => {
+      imagenesGuardadas.push(m);
+      return '\u0000IMG' + (imagenesGuardadas.length - 1) + '\u0000';
+    });
+  } else {
     out = out.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
   }
+
   if (!opts.enlaces) {
-    out = out.replace(/(?<!!)\[([^\]]*)\]\([^)]*\)/g, '$1');
+    out = out.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
   }
+
+  if (opts.imagenes) {
+    out = out.replace(/\u0000IMG(\d+)\u0000/g, (_, idx) => imagenesGuardadas[Number(idx)]);
+  }
+
   if (!opts.tablas) {
     out = excluirTablas(out);
   }
